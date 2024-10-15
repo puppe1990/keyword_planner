@@ -4,6 +4,8 @@
 
 The Keyword Analysis Dashboard is a powerful tool designed to help marketers and SEO professionals analyze keyword data efficiently. This dashboard allows users to upload keyword data, configure analysis parameters, and visualize the results through interactive charts and tables.
 
+<img width="1576" alt="Screenshot 2024-10-15 at 12 19 32" src="https://github.com/user-attachments/assets/a7e94892-e0c2-4ccd-bab4-a29630b1ca05">
+
 ## Features
 
 - **File Upload**: Easily upload CSV files containing keyword data.
