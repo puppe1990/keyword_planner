@@ -5,7 +5,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } fro
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+
+// Remove unused imports
+// import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 type KeywordData = {
   Keyword: string
@@ -94,12 +96,6 @@ export function KeywordAnalysisDashboardComponent() {
       reader.onload = (e) => processData(e.target?.result as string)
       reader.readAsText(file)
     }
-  }
-
-  const median = (arr: number[]) => {
-    const mid = Math.floor(arr.length / 2)
-    const nums = [...arr].sort((a, b) => a - b)
-    return arr.length % 2 !== 0 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2
   }
 
   const handleConfigChange = (section: keyof AnalysisConfig, field: string, value: number) => {
