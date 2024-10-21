@@ -46,7 +46,7 @@ const defaultConfig: AnalysisConfig = {
     count: 1000,
     minSearches: 10,
     maxSearches: 500,
-    maxCompetition: 0
+    maxCompetition: 100
   },
   lowBidKeywords: {
     count: 10,
