@@ -16,6 +16,7 @@ type KeywordData = {
   competition: number
   topPageBidLow: number
   topPageBidHigh: number
+  intention: string
 }
 
 type AnalysisConfig = {
@@ -45,7 +46,7 @@ const defaultConfig: AnalysisConfig = {
     count: 10,
     minSearches: 10,
     maxSearches: 500,
-    maxCompetition: 50
+    maxCompetition: 0
   },
   lowBidKeywords: {
     count: 10,
@@ -110,6 +111,47 @@ export function KeywordAnalysisDashboardComponent() {
     console.log(`Total rows processed: ${rawData.length}`)
     console.log('Sample raw data:', rawData[0]) // Log the first row of raw data
 
+    const categorizeIntentionExtended = (keyword: string): string => {
+      const keywordLower = keyword.toLowerCase();
+      
+      const transactionalWords = [
+        "comprar", "assinar", "adquirir", "preço", "cotação", 
+        "promoção", "desconto", "vender", "alugar", "contratar", 
+        "oferta", "encomendar", "loja", "valor", "licitar"
+      ];
+      
+      const commercialInvestigationWords = [
+        "melhor", "comparar", "review", "avaliação", "diferença", 
+        "análise", "testes", "ranking", "top", "benefícios", 
+        "prós e contras", "vs", "comparativo", "qual escolher", "recomendações"
+      ];
+      
+      const navigationalWords = [
+        "site", "login", "acessar", "entrar", "portal", 
+        "www", "endereço", "perfil", "aplicativo", "app", 
+        "contato", "telefone", "sac", "email", "suporte"
+      ];
+      
+      const informationalWords = [
+        "como", "o que é", "dicas", "guia", "tutoriais", 
+        "explicação", "definição", "passo a passo", "aprender", 
+        "exemplos", "informações", "manual", "sugestões", "por que", 
+        "conceitos", "história de", "significado", "tipos de", "uso"
+      ];
+
+      if (transactionalWords.some(word => keywordLower.includes(word))) {
+        return "Transacional";
+      } else if (commercialInvestigationWords.some(word => keywordLower.includes(word))) {
+        return "Investigação Comercial";
+      } else if (navigationalWords.some(word => keywordLower.includes(word))) {
+        return "Navegacional";
+      } else if (informationalWords.some(word => keywordLower.includes(word))) {
+        return "Informacional";
+      }
+
+      return "Informacional";
+    };
+
     const cleanedData: KeywordData[] = rawData
       .map(row => {
         const topPageBidLow = parseFloat(row['Top of page bid (low range)']?.replace(',', '.') || '0')
@@ -120,7 +162,8 @@ export function KeywordAnalysisDashboardComponent() {
           avgMonthlySearches: parseInt(row['Avg. monthly searches']?.replace(/[,\.]/g, '') || '0', 10),
           competition: parseFloat(row['Competition (indexed value)']?.replace(',', '.') || '0'),
           topPageBidLow: isNaN(topPageBidLow) ? 0 : topPageBidLow,
-          topPageBidHigh: isNaN(topPageBidHigh) ? 0 : topPageBidHigh
+          topPageBidHigh: isNaN(topPageBidHigh) ? 0 : topPageBidHigh,
+          intention: categorizeIntentionExtended(row['Keyword'] || '') // Add this line
         }
         console.log('Parsed row:', keywordData) // Log each parsed row
         return keywordData
@@ -196,41 +239,53 @@ export function KeywordAnalysisDashboardComponent() {
     setIsAnalyzing(true);
     
     // Top keywords analysis
-    const sortedKeywords = [...data]
-      .filter(row => row.avgMonthlySearches >= analysisConfig.topKeywords.minSearches)
-      .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
-    const topKeywordsResult = sortedKeywords.slice(0, analysisConfig.topKeywords.count);
+    const medianSearches = median(data.map(row => row.avgMonthlySearches));
+    const medianHighBid = median(data.map(row => row.topPageBidHigh));
+    
+    const filteredKeywords = data.filter(row => 
+      row.avgMonthlySearches > medianSearches && row.topPageBidHigh < medianHighBid
+    );
+    
+    const sortedKeywords = filteredKeywords.sort((a, b) => 
+      b.avgMonthlySearches - a.avgMonthlySearches || a.topPageBidHigh - b.topPageBidHigh
+    );
+    
+    const topKeywordsResult = sortedKeywords.slice(0, 30);
     setTopKeywords(topKeywordsResult);
     console.log('Top Keywords:', topKeywordsResult);
 
     // Niche keywords analysis
-    const nicheKeywords = data.filter(
-      row => row.avgMonthlySearches >= analysisConfig.nicheKeywords.minSearches &&
-             row.avgMonthlySearches <= analysisConfig.nicheKeywords.maxSearches &&
-             row.competition < analysisConfig.nicheKeywords.maxCompetition
+    const nicheKeywords = data.filter(row =>
+      row.avgMonthlySearches >= 10 &&
+      row.avgMonthlySearches <= 500 &&
+      row.competition < 50
     );
-    const nicheKeywordsResult = nicheKeywords.slice(0, analysisConfig.nicheKeywords.count);
-    setNicheKeywords(nicheKeywordsResult);
-    console.log('Niche Keywords:', nicheKeywordsResult);
+    setNicheKeywords(nicheKeywords);
+    console.log('Niche Keywords:', nicheKeywords);
 
     // Low bid keywords analysis
-    const sortedBySearches = [...data].sort((a, b) => a.avgMonthlySearches - b.avgMonthlySearches);
-    const sortedByBid = [...data].sort((a, b) => a.topPageBidHigh - b.topPageBidHigh);
-    
-    const searchIndex = Math.floor(sortedBySearches.length * analysisConfig.lowBidKeywords.minSearchPercentile / 100);
-    const bidIndex = Math.floor(sortedByBid.length * analysisConfig.lowBidKeywords.maxBidPercentile / 100);
-    
-    const searchThreshold = sortedBySearches[searchIndex]?.avgMonthlySearches ?? 0;
-    const bidThreshold = sortedByBid[bidIndex]?.topPageBidHigh ?? Infinity;
-
-    const lowBidKeywords = data.filter(
-      row => row.topPageBidHigh < bidThreshold && row.avgMonthlySearches > searchThreshold
-    ).sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
-    const lowBidKeywordsResult = lowBidKeywords.slice(0, analysisConfig.lowBidKeywords.count);
-    setLowBidKeywords(lowBidKeywordsResult);
-    console.log('Low Bid Keywords:', lowBidKeywordsResult);
+    const lowBidKeywords = data.filter(row =>
+      row.topPageBidHigh < medianHighBid &&
+      row.avgMonthlySearches > medianSearches
+    ).sort((a, b) => 
+      b.avgMonthlySearches - a.avgMonthlySearches || a.topPageBidHigh - b.topPageBidHigh
+    );
+    setLowBidKeywords(lowBidKeywords);
+    console.log('Low Bid Keywords:', lowBidKeywords);
 
     setIsAnalyzing(false);
+  }
+
+  // Helper function to calculate median
+  const median = (numbers: number[]): number => {
+    const sorted = numbers.slice().sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    if (sorted.length % 2 === 0) {
+      return (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    return sorted[middle];
   }
 
   const renderInput = (section: keyof AnalysisConfig, field: string, label: string) => {
@@ -281,6 +336,8 @@ export function KeywordAnalysisDashboardComponent() {
   const renderTable = (data: KeywordData[] | null, title: string) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortColumn, setSortColumn] = useState<keyof KeywordData>('Keyword');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const itemsPerPage = 10;
 
     if (!data) return null;
@@ -290,14 +347,31 @@ export function KeywordAnalysisDashboardComponent() {
       keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // Sort the filtered data
+    const sortedData = [...filteredData].sort((a, b) => {
+      if (a[sortColumn] < b[sortColumn]) return sortDirection === 'asc' ? -1 : 1;
+      if (a[sortColumn] > b[sortColumn]) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
     // Calculate pagination
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+    const currentItems = sortedData.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
 
     // Function to change page
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+
+    // Function to handle sorting
+    const handleSort = (column: keyof KeywordData) => {
+      if (column === sortColumn) {
+        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      } else {
+        setSortColumn(column);
+        setSortDirection('asc');
+      }
+    };
 
     return (
       <Card className="mb-8 shadow-lg">
@@ -334,17 +408,26 @@ export function KeywordAnalysisDashboardComponent() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keyword</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Monthly Searches</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Competition</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Top Page Bid (Low)</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Top Page Bid (High)</th>
+                  {(['Keyword', 'avgMonthlySearches', 'competition', 'topPageBidLow', 'topPageBidHigh', 'intention'] as const).map((column) => (
+                    <th
+                      key={column}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort(column)}
+                    >
+                      <div className="flex items-center">
+                        {column}
+                        {sortColumn === column && (
+                          sortDirection === 'asc' ? <ArrowUpIcon className="ml-1 h-4 w-4" /> : <ArrowDownIcon className="ml-1 h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                       No results found for {title}
                     </td>
                   </tr>
@@ -356,6 +439,7 @@ export function KeywordAnalysisDashboardComponent() {
                       <td className="px-6 py-4 whitespace-nowrap">{row.competition}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidLow}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidHigh}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.intention}</td>
                     </tr>
                   ))
                 )}
@@ -365,8 +449,8 @@ export function KeywordAnalysisDashboardComponent() {
           <div className="mt-4 flex flex-col items-center justify-center">
             <div className="mb-2">
               <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, filteredData.length)}</span> of{' '}
-                <span className="font-medium">{filteredData.length}</span> results
+                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, sortedData.length)}</span> of{' '}
+                <span className="font-medium">{sortedData.length}</span> results
               </p>
             </div>
             <div>
@@ -487,22 +571,9 @@ export function KeywordAnalysisDashboardComponent() {
     const currentItems = sortedFilteredKeywords.slice(indexOfFirstItem, indexOfLastItem)
     const totalPages = Math.ceil(sortedFilteredKeywords.length / itemsPerPage)
 
-    // Function to change page
-    const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
-
-    // Function to handle sorting
-    const handleSort = (column: SortColumn) => {
-      if (column === sortColumn) {
-        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-      } else {
-        setSortColumn(column)
-        setSortDirection('asc')
-      }
-    }
-
     // Calculate the range of page numbers to display
     const pageNumbers = []
-    const maxPagesToShow = 10
+    const maxPagesToShow = 5
     let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2))
     let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1)
 
@@ -513,6 +584,22 @@ export function KeywordAnalysisDashboardComponent() {
     for (let i = startPage; i <= endPage; i++) {
       pageNumbers.push(i)
     }
+
+    // Function to change page
+    const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
+
+    // Function to handle sorting
+    const handleSort = (column: keyof KeywordData) => {
+      if (column === sortColumn) {
+        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+      } else {
+        setSortColumn(column as SortColumn)
+        setSortDirection('asc')
+      }
+    }
+
+    // Get all headers from the first item
+    const headers = currentItems.length > 0 ? Object.keys(currentItems[0]) : []
 
     return (
       <Card className="mb-8 shadow-lg">
@@ -539,15 +626,15 @@ export function KeywordAnalysisDashboardComponent() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {(['Keyword', 'avgMonthlySearches', 'competition', 'topPageBidLow', 'topPageBidHigh'] as const).map((column) => (
+                  {headers.map((header) => (
                     <th
-                      key={column}
+                      key={header}
                       className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort(column)}
+                      onClick={() => handleSort(header as keyof KeywordData)}
                     >
                       <div className="flex items-center">
-                        {column}
-                        {sortColumn === column && (
+                        {header}
+                        {sortColumn === header && (
                           sortDirection === 'asc' ? <ArrowUpIcon className="ml-1 h-4 w-4" /> : <ArrowDownIcon className="ml-1 h-4 w-4" />
                         )}
                       </div>
@@ -558,11 +645,11 @@ export function KeywordAnalysisDashboardComponent() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentItems.map((row, index) => (
                   <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.Keyword}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.avgMonthlySearches}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.competition}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidLow}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidHigh}</td>
+                    {headers.map((header) => (
+                      <td key={header} className="px-6 py-4 whitespace-nowrap">
+                        {row[header as keyof KeywordData]}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
