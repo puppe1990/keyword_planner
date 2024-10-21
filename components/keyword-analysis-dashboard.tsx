@@ -39,11 +39,11 @@ type AnalysisConfig = {
 
 const defaultConfig: AnalysisConfig = {
   topKeywords: {
-    count: 10,
+    count: 1000,
     minSearches: 1000
   },
   nicheKeywords: {
-    count: 10,
+    count: 1000,
     minSearches: 10,
     maxSearches: 500,
     maxCompetition: 0
@@ -83,6 +83,14 @@ export function KeywordAnalysisDashboardComponent() {
 
   const [sortColumn, setSortColumn] = useState<SortColumn>('Keyword')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  // Add these state variables for the All Valid Keywords table
+  const [allValidCurrentPage, setAllValidCurrentPage] = useState(1);
+  const [allValidSearchTerm, setAllValidSearchTerm] = useState('');
+  const [allValidIntentionFilter, setAllValidIntentionFilter] = useState('');
+  const [allValidSortColumn, setAllValidSortColumn] = useState<keyof KeywordData>('Keyword');
+  const [allValidSortDirection, setAllValidSortDirection] = useState<SortDirection>('asc');
+  const [allValidItemsPerPage, setAllValidItemsPerPage] = useState<number | 'all'>(10);
 
   const processData = useCallback((fileContent: string) => {
     // Split the content into lines and remove any empty lines
@@ -253,7 +261,9 @@ export function KeywordAnalysisDashboardComponent() {
       row.avgMonthlySearches <= analysisConfig.nicheKeywords.maxSearches &&
       row.competition <= analysisConfig.nicheKeywords.maxCompetition
     );
-    const nicheKeywordsResult = nicheKeywords.slice(0, analysisConfig.nicheKeywords.count);
+    const nicheKeywordsResult = nicheKeywords
+      .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches)
+      .slice(0, analysisConfig.nicheKeywords.count);
     setNicheKeywords(nicheKeywordsResult);
     console.log('Niche Keywords:', nicheKeywordsResult);
 
@@ -340,7 +350,7 @@ export function KeywordAnalysisDashboardComponent() {
     const [intentionFilter, setIntentionFilter] = useState('');
     const [sortColumn, setSortColumn] = useState<keyof KeywordData>('Keyword');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10);
 
     if (!data) return null;
 
@@ -358,10 +368,11 @@ export function KeywordAnalysisDashboardComponent() {
     });
 
     // Calculate pagination
-    const indexOfLastItem = currentPage * itemsPerPage;
-    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const totalItems = sortedData.length;
+    const indexOfLastItem = itemsPerPage === 'all' ? totalItems : currentPage * Number(itemsPerPage);
+    const indexOfFirstItem = itemsPerPage === 'all' ? 0 : indexOfLastItem - Number(itemsPerPage);
     const currentItems = sortedData.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+    const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(totalItems / Number(itemsPerPage));
 
     // Function to change page
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
@@ -421,6 +432,21 @@ export function KeywordAnalysisDashboardComponent() {
                 </option>
               ))}
             </select>
+            <select
+              value={itemsPerPage.toString()}
+              onChange={(e) => {
+                const value = e.target.value;
+                setItemsPerPage(value === 'all' ? 'all' : Number(value));
+                setCurrentPage(1);
+              }}
+              className="border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="10">10 per page</option>
+              <option value="25">25 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+              <option value="all">Show All</option>
+            </select>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -464,63 +490,65 @@ export function KeywordAnalysisDashboardComponent() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex flex-col items-center justify-center">
-            <div className="mb-2">
-              <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, sortedData.length)}</span> of{' '}
-                <span className="font-medium">{sortedData.length}</span> results
-              </p>
-            </div>
-            <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                <Button
-                  onClick={() => paginate(1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">First</span>
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                <Button
-                  onClick={() => paginate(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Previous</span>
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                {[...Array(totalPages)].map((_, i) => (
+          {itemsPerPage !== 'all' && (
+            <div className="mt-4 flex flex-col items-center justify-center">
+              <div className="mb-2">
+                <p className="text-sm text-gray-700">
+                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, totalItems)}</span> of{' '}
+                  <span className="font-medium">{totalItems}</span> results
+                </p>
+              </div>
+              <div>
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                   <Button
-                    key={i}
-                    onClick={() => paginate(i + 1)}
-                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
-                      i + 1 === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
+                    onClick={() => paginate(1)}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                   >
-                    {i + 1}
+                    <span className="sr-only">First</span>
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
                   </Button>
-                ))}
-                <Button
-                  onClick={() => paginate(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Next</span>
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                <Button
-                  onClick={() => paginate(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Last</span>
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-              </nav>
+                  <Button
+                    onClick={() => paginate(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Previous</span>
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                  {[...Array(totalPages)].map((_, i) => (
+                    <Button
+                      key={i}
+                      onClick={() => paginate(i + 1)}
+                      className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                        i + 1 === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {i + 1}
+                    </Button>
+                  ))}
+                  <Button
+                    onClick={() => paginate(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Next</span>
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    onClick={() => paginate(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Last</span>
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                </nav>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -575,46 +603,41 @@ export function KeywordAnalysisDashboardComponent() {
   const renderAllValidKeywordsTable = () => {
     if (!allValidKeywords) return null
 
-    // Filter keywords based on search term
+    // Filter keywords based on search term and intention
     const filteredKeywords = allValidKeywords.filter(keyword =>
-      keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase())
+      keyword.Keyword.toLowerCase().includes(allValidSearchTerm.toLowerCase()) &&
+      (allValidIntentionFilter === '' || keyword.intention === allValidIntentionFilter)
     )
 
     // Sort the filtered keywords
-    const sortedFilteredKeywords = sortedKeywords(filteredKeywords)
+    const sortedFilteredKeywords = [...filteredKeywords].sort((a, b) => {
+      if (a[allValidSortColumn] < b[allValidSortColumn]) return allValidSortDirection === 'asc' ? -1 : 1;
+      if (a[allValidSortColumn] > b[allValidSortColumn]) return allValidSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
 
     // Calculate pagination
-    const indexOfLastItem = currentPage * itemsPerPage
-    const indexOfFirstItem = indexOfLastItem - itemsPerPage
-    const currentItems = sortedFilteredKeywords.slice(indexOfFirstItem, indexOfLastItem)
-    const totalPages = Math.ceil(sortedFilteredKeywords.length / itemsPerPage)
-
-    // Calculate the range of page numbers to display
-    const pageNumbers = []
-    const maxPagesToShow = 5
-    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2))
-    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1)
-
-    if (endPage - startPage + 1 < maxPagesToShow) {
-      startPage = Math.max(1, endPage - maxPagesToShow + 1)
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-      pageNumbers.push(i)
-    }
+    const totalItems = sortedFilteredKeywords.length;
+    const indexOfLastItem = allValidItemsPerPage === 'all' ? totalItems : allValidCurrentPage * Number(allValidItemsPerPage);
+    const indexOfFirstItem = allValidItemsPerPage === 'all' ? 0 : indexOfLastItem - Number(allValidItemsPerPage);
+    const currentItems = sortedFilteredKeywords.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = allValidItemsPerPage === 'all' ? 1 : Math.ceil(totalItems / Number(allValidItemsPerPage));
 
     // Function to change page
-    const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
+    const paginate = (pageNumber: number) => setAllValidCurrentPage(pageNumber)
 
     // Function to handle sorting
     const handleSort = (column: keyof KeywordData) => {
-      if (column === sortColumn) {
-        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+      if (column === allValidSortColumn) {
+        setAllValidSortDirection(allValidSortDirection === 'asc' ? 'desc' : 'asc')
       } else {
-        setSortColumn(column as SortColumn)
-        setSortDirection('asc')
+        setAllValidSortColumn(column)
+        setAllValidSortDirection('asc')
       }
     }
+
+    // Get unique intentions for the dropdown
+    const intentions = ['', ...new Set(allValidKeywords.map(item => item.intention))];
 
     // Get all headers from the first item
     const headers = currentItems.length > 0 ? Object.keys(currentItems[0]) : []
@@ -631,14 +654,41 @@ export function KeywordAnalysisDashboardComponent() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
+          <div className="mb-4 flex space-x-4">
             <Input
               type="text"
               placeholder="Search keywords..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={allValidSearchTerm}
+              onChange={(e) => setAllValidSearchTerm(e.target.value)}
               className="w-full"
             />
+            <select
+              value={allValidIntentionFilter}
+              onChange={(e) => setAllValidIntentionFilter(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="">All Intentions</option>
+              {intentions.map((intention) => (
+                <option key={intention} value={intention}>
+                  {intention}
+                </option>
+              ))}
+            </select>
+            <select
+              value={allValidItemsPerPage.toString()}
+              onChange={(e) => {
+                const value = e.target.value;
+                setAllValidItemsPerPage(value === 'all' ? 'all' : Number(value));
+                setAllValidCurrentPage(1);
+              }}
+              className="border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="10">10 per page</option>
+              <option value="25">25 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+              <option value="all">Show All</option>
+            </select>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -652,8 +702,8 @@ export function KeywordAnalysisDashboardComponent() {
                     >
                       <div className="flex items-center">
                         {header}
-                        {sortColumn === header && (
-                          sortDirection === 'asc' ? <ArrowUpIcon className="ml-1 h-4 w-4" /> : <ArrowDownIcon className="ml-1 h-4 w-4" />
+                        {allValidSortColumn === header && (
+                          allValidSortDirection === 'asc' ? <ArrowUpIcon className="ml-1 h-4 w-4" /> : <ArrowDownIcon className="ml-1 h-4 w-4" />
                         )}
                       </div>
                     </th>
@@ -673,63 +723,65 @@ export function KeywordAnalysisDashboardComponent() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex flex-col items-center justify-center">
-            <div className="mb-2">
-              <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, filteredKeywords.length)}</span> of{' '}
-                <span className="font-medium">{filteredKeywords.length}</span> results
-              </p>
-            </div>
-            <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                <Button
-                  onClick={() => paginate(1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">First</span>
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                <Button
-                  onClick={() => paginate(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Previous</span>
-                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                {pageNumbers.map((number) => (
+          {allValidItemsPerPage !== 'all' && (
+            <div className="mt-4 flex flex-col items-center justify-center">
+              <div className="mb-2">
+                <p className="text-sm text-gray-700">
+                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, totalItems)}</span> of{' '}
+                  <span className="font-medium">{totalItems}</span> results
+                </p>
+              </div>
+              <div>
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                   <Button
-                    key={number}
-                    onClick={() => paginate(number)}
-                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
-                      number === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
+                    onClick={() => paginate(1)}
+                    disabled={allValidCurrentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                   >
-                    {number}
+                    <span className="sr-only">First</span>
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
                   </Button>
-                ))}
-                <Button
-                  onClick={() => paginate(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Next</span>
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-                <Button
-                  onClick={() => paginate(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Last</span>
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                </Button>
-              </nav>
+                  <Button
+                    onClick={() => paginate(allValidCurrentPage - 1)}
+                    disabled={allValidCurrentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Previous</span>
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                  {[...Array(totalPages)].map((_, i) => (
+                    <Button
+                      key={i}
+                      onClick={() => paginate(i + 1)}
+                      className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                        i + 1 === allValidCurrentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {i + 1}
+                    </Button>
+                  ))}
+                  <Button
+                    onClick={() => paginate(allValidCurrentPage + 1)}
+                    disabled={allValidCurrentPage === totalPages}
+                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Next</span>
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    onClick={() => paginate(totalPages)}
+                    disabled={allValidCurrentPage === totalPages}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                  >
+                    <span className="sr-only">Last</span>
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  </Button>
+                </nav>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     )
