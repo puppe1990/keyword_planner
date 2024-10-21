@@ -239,39 +239,40 @@ export function KeywordAnalysisDashboardComponent() {
     setIsAnalyzing(true);
     
     // Top keywords analysis
-    const medianSearches = median(data.map(row => row.avgMonthlySearches));
-    const medianHighBid = median(data.map(row => row.topPageBidHigh));
+    const sortedKeywords = [...data]
+      .filter(row => row.avgMonthlySearches >= analysisConfig.topKeywords.minSearches)
+      .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
     
-    const filteredKeywords = data.filter(row => 
-      row.avgMonthlySearches > medianSearches && row.topPageBidHigh < medianHighBid
-    );
-    
-    const sortedKeywords = filteredKeywords.sort((a, b) => 
-      b.avgMonthlySearches - a.avgMonthlySearches || a.topPageBidHigh - b.topPageBidHigh
-    );
-    
-    const topKeywordsResult = sortedKeywords.slice(0, 30);
+    const topKeywordsResult = sortedKeywords.slice(0, analysisConfig.topKeywords.count);
     setTopKeywords(topKeywordsResult);
     console.log('Top Keywords:', topKeywordsResult);
 
     // Niche keywords analysis
     const nicheKeywords = data.filter(row =>
-      row.avgMonthlySearches >= 10 &&
-      row.avgMonthlySearches <= 500 &&
-      row.competition < 50
+      row.avgMonthlySearches >= analysisConfig.nicheKeywords.minSearches &&
+      row.avgMonthlySearches <= analysisConfig.nicheKeywords.maxSearches &&
+      row.competition <= analysisConfig.nicheKeywords.maxCompetition
     );
-    setNicheKeywords(nicheKeywords);
-    console.log('Niche Keywords:', nicheKeywords);
+    const nicheKeywordsResult = nicheKeywords.slice(0, analysisConfig.nicheKeywords.count);
+    setNicheKeywords(nicheKeywordsResult);
+    console.log('Niche Keywords:', nicheKeywordsResult);
 
     // Low bid keywords analysis
-    const lowBidKeywords = data.filter(row =>
-      row.topPageBidHigh < medianHighBid &&
-      row.avgMonthlySearches > medianSearches
-    ).sort((a, b) => 
-      b.avgMonthlySearches - a.avgMonthlySearches || a.topPageBidHigh - b.topPageBidHigh
-    );
-    setLowBidKeywords(lowBidKeywords);
-    console.log('Low Bid Keywords:', lowBidKeywords);
+    const sortedBySearches = [...data].sort((a, b) => a.avgMonthlySearches - b.avgMonthlySearches);
+    const sortedByBid = [...data].sort((a, b) => a.topPageBidHigh - b.topPageBidHigh);
+    
+    const searchIndex = Math.floor(sortedBySearches.length * analysisConfig.lowBidKeywords.minSearchPercentile / 100);
+    const bidIndex = Math.floor(sortedByBid.length * analysisConfig.lowBidKeywords.maxBidPercentile / 100);
+    
+    const searchThreshold = sortedBySearches[searchIndex]?.avgMonthlySearches ?? 0;
+    const bidThreshold = sortedByBid[bidIndex]?.topPageBidHigh ?? Infinity;
+
+    const lowBidKeywords = data.filter(
+      row => row.topPageBidHigh < bidThreshold && row.avgMonthlySearches > searchThreshold
+    ).sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
+    const lowBidKeywordsResult = lowBidKeywords.slice(0, analysisConfig.lowBidKeywords.count);
+    setLowBidKeywords(lowBidKeywordsResult);
+    console.log('Low Bid Keywords:', lowBidKeywordsResult);
 
     setIsAnalyzing(false);
   }
@@ -336,15 +337,17 @@ export function KeywordAnalysisDashboardComponent() {
   const renderTable = (data: KeywordData[] | null, title: string) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
+    const [intentionFilter, setIntentionFilter] = useState('');
     const [sortColumn, setSortColumn] = useState<keyof KeywordData>('Keyword');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const itemsPerPage = 10;
 
     if (!data) return null;
 
-    // Filter data based on search term
+    // Filter data based on search term and intention
     const filteredData = data.filter(keyword =>
-      keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase())
+      keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (intentionFilter === '' || keyword.intention === intentionFilter)
     );
 
     // Sort the filtered data
@@ -373,6 +376,9 @@ export function KeywordAnalysisDashboardComponent() {
       }
     };
 
+    // Get unique intentions for the dropdown
+    const intentions = ['', ...new Set(data.map(item => item.intention))];
+
     return (
       <Card className="mb-8 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
@@ -395,7 +401,7 @@ export function KeywordAnalysisDashboardComponent() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
+          <div className="mb-4 flex space-x-4">
             <Input
               type="text"
               placeholder="Search keywords..."
@@ -403,6 +409,18 @@ export function KeywordAnalysisDashboardComponent() {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full"
             />
+            <select
+              value={intentionFilter}
+              onChange={(e) => setIntentionFilter(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="">All Intentions</option>
+              {intentions.map((intention) => (
+                <option key={intention} value={intention}>
+                  {intention}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
