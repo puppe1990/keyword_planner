@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon } from '@radix-ui/react-icons'
 
 // Remove unused imports
 // import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
@@ -53,6 +54,9 @@ const defaultConfig: AnalysisConfig = {
   }
 }
 
+type SortColumn = 'Keyword' | 'avgMonthlySearches' | 'competition' | 'topPageBidLow' | 'topPageBidHigh'
+type SortDirection = 'asc' | 'desc'
+
 export function KeywordAnalysisDashboardComponent() {
   const [data, setData] = useState<KeywordData[] | null>(null)
   const [topKeywords, setTopKeywords] = useState<KeywordData[] | null>(null)
@@ -66,34 +70,97 @@ export function KeywordAnalysisDashboardComponent() {
 
   const [showChart, setShowChart] = useState<'top' | 'niche' | 'lowBid' | null>(null)
 
-  const processData = (fileContent: string) => {
-    const lines = fileContent.split('\n').slice(2) // Skip first two lines
-    const headers = lines[0].split('\t')
-    const rawData = lines.slice(1).map(line => {
+  // Add this new state variable
+  const [allValidKeywords, setAllValidKeywords] = useState<KeywordData[] | null>(null)
+
+  // Add these new state variables for pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // Add this new state variable at the beginning of your component
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const [sortColumn, setSortColumn] = useState<SortColumn>('Keyword')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  const processData = useCallback((fileContent: string) => {
+    // Split the content into lines and remove any empty lines
+    const lines = fileContent.split('\n').filter(line => line.trim() !== '')
+    
+    // Find the index of the actual header row
+    const headerIndex = lines.findIndex(line => line.includes('Keyword') && line.includes('Avg. monthly searches'))
+    
+    if (headerIndex === -1) {
+      console.error('Could not find header row')
+      return
+    }
+
+    // The header row
+    const headers = lines[headerIndex].split('\t')
+
+    // Process all the remaining lines as data
+    const rawData = lines.slice(headerIndex + 1).map(line => {
       const values = line.split('\t')
       return headers.reduce<Record<string, string>>((obj, header, index) => {
-        obj[header.trim()] = values[index]
+        obj[header.trim()] = values[index]?.trim() || ''
         return obj
       }, {})
     })
 
-    const cleanedData: KeywordData[] = rawData.map(row => ({
-      Keyword: row['Keyword'],
-      avgMonthlySearches: parseInt(row['Avg. monthly searches']?.replace(/,/g, '') || '0', 10),
-      competition: parseFloat(row['Competition (indexed value)'] || '0'),
-      topPageBidLow: parseFloat(row['Top of page bid (low range)']?.replace(',', '.') || '0'),
-      topPageBidHigh: parseFloat(row['Top of page bid (high range)']?.replace(',', '.') || '0')
-    })).filter(row => !isNaN(row.avgMonthlySearches) && !isNaN(row.topPageBidHigh))
+    console.log(`Total rows processed: ${rawData.length}`)
+    console.log('Sample raw data:', rawData[0]) // Log the first row of raw data
+
+    const cleanedData: KeywordData[] = rawData
+      .map(row => {
+        const topPageBidLow = parseFloat(row['Top of page bid (low range)']?.replace(',', '.') || '0')
+        const topPageBidHigh = parseFloat(row['Top of page bid (high range)']?.replace(',', '.') || '0')
+        
+        const keywordData = {
+          Keyword: row['Keyword'] || '',
+          avgMonthlySearches: parseInt(row['Avg. monthly searches']?.replace(/[,\.]/g, '') || '0', 10),
+          competition: parseFloat(row['Competition (indexed value)']?.replace(',', '.') || '0'),
+          topPageBidLow: isNaN(topPageBidLow) ? 0 : topPageBidLow,
+          topPageBidHigh: isNaN(topPageBidHigh) ? 0 : topPageBidHigh
+        }
+        console.log('Parsed row:', keywordData) // Log each parsed row
+        return keywordData
+      })
+      .filter(row => {
+        const isValid = row.Keyword !== '' && 
+          !isNaN(row.avgMonthlySearches) && 
+          !isNaN(row.competition)
+        if (!isValid) {
+          console.log('Invalid row:', row) // Log invalid rows
+        }
+        return isValid
+      })
+
+    console.log(`Cleaned data rows: ${cleanedData.length}`)
+    if (cleanedData.length > 0) {
+      console.log('Sample cleaned data:', cleanedData[0]) // Log the first row of cleaned data
+    }
 
     setData(cleanedData)
-  }
+    setAllValidKeywords(cleanedData)
+  }, [])
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setFileName(file.name)
       const reader = new FileReader()
-      reader.onload = (e) => processData(e.target?.result as string)
+      reader.onload = (e) => {
+        const content = e.target?.result
+        if (typeof content === 'string') {
+          console.log(`File size: ${content.length} characters`) // Add this line for debugging
+          processData(content)
+        } else {
+          console.error('Failed to read file as string')
+        }
+      }
+      reader.onerror = (e) => {
+        console.error('Error reading file:', e)
+      }
       reader.readAsText(file)
     }
   }
@@ -120,40 +187,50 @@ export function KeywordAnalysisDashboardComponent() {
   }
 
   const analyzeKeywords = () => {
-    if (!data || data.length === 0) return
+    console.log('Analyzing keywords...');
+    if (!data || data.length === 0) {
+      console.log('No data to analyze');
+      return;
+    }
 
-    setIsAnalyzing(true)
+    setIsAnalyzing(true);
     
     // Top keywords analysis
     const sortedKeywords = [...data]
       .filter(row => row.avgMonthlySearches >= analysisConfig.topKeywords.minSearches)
-      .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches)
-    setTopKeywords(sortedKeywords.slice(0, analysisConfig.topKeywords.count))
+      .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
+    const topKeywordsResult = sortedKeywords.slice(0, analysisConfig.topKeywords.count);
+    setTopKeywords(topKeywordsResult);
+    console.log('Top Keywords:', topKeywordsResult);
 
     // Niche keywords analysis
     const nicheKeywords = data.filter(
       row => row.avgMonthlySearches >= analysisConfig.nicheKeywords.minSearches &&
              row.avgMonthlySearches <= analysisConfig.nicheKeywords.maxSearches &&
              row.competition < analysisConfig.nicheKeywords.maxCompetition
-    )
-    setNicheKeywords(nicheKeywords.slice(0, analysisConfig.nicheKeywords.count))
+    );
+    const nicheKeywordsResult = nicheKeywords.slice(0, analysisConfig.nicheKeywords.count);
+    setNicheKeywords(nicheKeywordsResult);
+    console.log('Niche Keywords:', nicheKeywordsResult);
 
     // Low bid keywords analysis
-    const sortedBySearches = [...data].sort((a, b) => a.avgMonthlySearches - b.avgMonthlySearches)
-    const sortedByBid = [...data].sort((a, b) => a.topPageBidHigh - b.topPageBidHigh)
+    const sortedBySearches = [...data].sort((a, b) => a.avgMonthlySearches - b.avgMonthlySearches);
+    const sortedByBid = [...data].sort((a, b) => a.topPageBidHigh - b.topPageBidHigh);
     
-    const searchIndex = Math.min(Math.floor(sortedBySearches.length * analysisConfig.lowBidKeywords.minSearchPercentile / 100), sortedBySearches.length - 1)
-    const bidIndex = Math.min(Math.floor(sortedByBid.length * analysisConfig.lowBidKeywords.maxBidPercentile / 100), sortedByBid.length - 1)
+    const searchIndex = Math.floor(sortedBySearches.length * analysisConfig.lowBidKeywords.minSearchPercentile / 100);
+    const bidIndex = Math.floor(sortedByBid.length * analysisConfig.lowBidKeywords.maxBidPercentile / 100);
     
-    const searchThreshold = sortedBySearches[searchIndex]?.avgMonthlySearches ?? 0
-    const bidThreshold = sortedByBid[bidIndex]?.topPageBidHigh ?? Infinity
+    const searchThreshold = sortedBySearches[searchIndex]?.avgMonthlySearches ?? 0;
+    const bidThreshold = sortedByBid[bidIndex]?.topPageBidHigh ?? Infinity;
 
     const lowBidKeywords = data.filter(
       row => row.topPageBidHigh < bidThreshold && row.avgMonthlySearches > searchThreshold
-    ).sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches)
-    setLowBidKeywords(lowBidKeywords.slice(0, analysisConfig.lowBidKeywords.count))
+    ).sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
+    const lowBidKeywordsResult = lowBidKeywords.slice(0, analysisConfig.lowBidKeywords.count);
+    setLowBidKeywords(lowBidKeywordsResult);
+    console.log('Low Bid Keywords:', lowBidKeywordsResult);
 
-    setIsAnalyzing(false)
+    setIsAnalyzing(false);
   }
 
   const renderInput = (section: keyof AnalysisConfig, field: string, label: string) => {
@@ -202,25 +279,57 @@ export function KeywordAnalysisDashboardComponent() {
   }
 
   const renderTable = (data: KeywordData[] | null, title: string) => {
-    if (!data) return null
+    const [currentPage, setCurrentPage] = useState(1);
+    const [searchTerm, setSearchTerm] = useState('');
+    const itemsPerPage = 10;
+
+    if (!data) return null;
+
+    // Filter data based on search term
+    const filteredData = data.filter(keyword =>
+      keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // Calculate pagination
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+    // Function to change page
+    const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+
     return (
       <Card className="mb-8 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold">{title}</h2>
             <div>
-              <Button onClick={() => downloadCSV(data, `${title.toLowerCase().replace(' ', '_')}.csv`)}
-                      className="bg-white text-blue-600 hover:bg-blue-100">
+              <Button 
+                onClick={() => downloadCSV(data, `${title.toLowerCase().replace(' ', '_')}.csv`)}
+                className="bg-white text-blue-600 hover:bg-blue-100 mr-2"
+              >
                 Download CSV
               </Button>
-              <Button className="ml-2 bg-white text-purple-600 hover:bg-purple-100"
-                      onClick={() => setShowChart(title.toLowerCase().replace(' ', '') as 'top' | 'niche' | 'lowBid')}>
+              <Button 
+                onClick={() => setShowChart(title.toLowerCase().replace(' ', '') as 'top' | 'niche' | 'lowBid')}
+                className="bg-white text-purple-600 hover:bg-purple-100"
+              >
                 View Chart
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <Input
+              type="text"
+              placeholder="Search keywords..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full"
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -233,22 +342,87 @@ export function KeywordAnalysisDashboardComponent() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {data.map((row, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.Keyword}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.avgMonthlySearches}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.competition}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidLow}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidHigh}</td>
+                {currentItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                      No results found for {title}
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  currentItems.map((row, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.Keyword}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.avgMonthlySearches}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.competition}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidLow}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidHigh}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
+          <div className="mt-4 flex flex-col items-center justify-center">
+            <div className="mb-2">
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, filteredData.length)}</span> of{' '}
+                <span className="font-medium">{filteredData.length}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <Button
+                  onClick={() => paginate(1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">First</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                {[...Array(totalPages)].map((_, i) => (
+                  <Button
+                    key={i}
+                    onClick={() => paginate(i + 1)}
+                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                      i + 1 === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {i + 1}
+                  </Button>
+                ))}
+                <Button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Last</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </nav>
+            </div>
+          </div>
         </CardContent>
       </Card>
-    )
-  }
+    );
+  };
 
   const renderChart = (data: KeywordData[] | null, type: 'top' | 'niche' | 'lowBid') => {
     if (!data || data.length === 0) return null;
@@ -284,9 +458,183 @@ export function KeywordAnalysisDashboardComponent() {
     );
   };
 
+  const sortData = useCallback((data: KeywordData[], column: SortColumn, direction: SortDirection) => {
+    return [...data].sort((a, b) => {
+      if (a[column] < b[column]) return direction === 'asc' ? -1 : 1
+      if (a[column] > b[column]) return direction === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [])
+
+  const sortedKeywords = useCallback((keywords: KeywordData[]) => {
+    return sortData(keywords, sortColumn, sortDirection)
+  }, [sortData, sortColumn, sortDirection])
+
+  const renderAllValidKeywordsTable = () => {
+    if (!allValidKeywords) return null
+
+    // Filter keywords based on search term
+    const filteredKeywords = allValidKeywords.filter(keyword =>
+      keyword.Keyword.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+
+    // Sort the filtered keywords
+    const sortedFilteredKeywords = sortedKeywords(filteredKeywords)
+
+    // Calculate pagination
+    const indexOfLastItem = currentPage * itemsPerPage
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage
+    const currentItems = sortedFilteredKeywords.slice(indexOfFirstItem, indexOfLastItem)
+    const totalPages = Math.ceil(sortedFilteredKeywords.length / itemsPerPage)
+
+    // Function to change page
+    const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
+
+    // Function to handle sorting
+    const handleSort = (column: SortColumn) => {
+      if (column === sortColumn) {
+        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+      } else {
+        setSortColumn(column)
+        setSortDirection('asc')
+      }
+    }
+
+    // Calculate the range of page numbers to display
+    const pageNumbers = []
+    const maxPagesToShow = 10
+    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2))
+    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1)
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1)
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i)
+    }
+
+    return (
+      <Card className="mb-8 shadow-lg">
+        <CardHeader className="bg-gradient-to-r from-green-500 to-teal-600 text-white">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">All Valid Keywords</h2>
+            <Button onClick={() => downloadCSV(allValidKeywords, 'all_valid_keywords.csv')}
+                    className="bg-white text-green-600 hover:bg-green-100">
+              Download CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <Input
+              type="text"
+              placeholder="Search keywords..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {(['Keyword', 'avgMonthlySearches', 'competition', 'topPageBidLow', 'topPageBidHigh'] as const).map((column) => (
+                    <th
+                      key={column}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort(column)}
+                    >
+                      <div className="flex items-center">
+                        {column}
+                        {sortColumn === column && (
+                          sortDirection === 'asc' ? <ArrowUpIcon className="ml-1 h-4 w-4" /> : <ArrowDownIcon className="ml-1 h-4 w-4" />
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {currentItems.map((row, index) => (
+                  <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <td className="px-6 py-4 whitespace-nowrap">{row.Keyword}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{row.avgMonthlySearches}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{row.competition}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidLow}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{row.topPageBidHigh}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 flex flex-col items-center justify-center">
+            <div className="mb-2">
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, filteredKeywords.length)}</span> of{' '}
+                <span className="font-medium">{filteredKeywords.length}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <Button
+                  onClick={() => paginate(1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">First</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                {pageNumbers.map((number) => (
+                  <Button
+                    key={number}
+                    onClick={() => paginate(number)}
+                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                      number === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {number}
+                  </Button>
+                ))}
+                <Button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Last</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </nav>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto bg-gray-100 min-h-screen">
       <h1 className="text-4xl font-bold mb-8 text-gray-800">Keyword Analysis Dashboard</h1>
+      
+      {/* File upload card */}
       <Card className="mb-8 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-green-400 to-blue-500 text-white">
           <h2 className="text-2xl font-semibold">Upload and Analyze</h2>
@@ -294,8 +642,11 @@ export function KeywordAnalysisDashboardComponent() {
         <CardContent className="bg-white">
           <div className="flex items-center space-x-4 mb-4">
             <Input type="file" onChange={handleFileUpload} accept=".csv" className="flex-grow bg-gray-50" />
-            <Button onClick={analyzeKeywords} disabled={!data || isAnalyzing}
-                    className="bg-blue-500 hover:bg-blue-600 text-white">
+            <Button 
+              onClick={analyzeKeywords} 
+              disabled={!data || isAnalyzing}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
               {isAnalyzing ? 'Analyzing...' : 'Analyze Keywords'}
             </Button>
           </div>
@@ -303,6 +654,7 @@ export function KeywordAnalysisDashboardComponent() {
         </CardContent>
       </Card>
       
+      {/* Analysis configuration card */}
       <Card className="mb-8 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white">
           <h2 className="text-2xl font-semibold">Analysis Configuration</h2>
@@ -331,10 +683,15 @@ export function KeywordAnalysisDashboardComponent() {
         </CardContent>
       </Card>
 
+      {/* Top Keywords, Niche Keywords, and Low Bid Keywords tables */}
       {renderTable(topKeywords, "Top Keywords")}
       {renderTable(nicheKeywords, "Niche Keywords")}
       {renderTable(lowBidKeywords, "Low Bid Keywords")}
+
+      {/* All Valid Keywords table */}
+      {renderAllValidKeywordsTable()}
       
+      {/* Chart modal */}
       {showChart && renderChart(
         showChart === 'top' ? topKeywords :
         showChart === 'niche' ? nicheKeywords :
