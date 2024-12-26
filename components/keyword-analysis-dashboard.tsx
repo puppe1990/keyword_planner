@@ -350,7 +350,7 @@ export function KeywordAnalysisDashboardComponent() {
     const [intentionFilter, setIntentionFilter] = useState('');
     const [sortColumn, setSortColumn] = useState<keyof KeywordData>('Keyword');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-    const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     if (!data) return null;
 
@@ -369,10 +369,10 @@ export function KeywordAnalysisDashboardComponent() {
 
     // Calculate pagination
     const totalItems = sortedData.length;
-    const indexOfLastItem = itemsPerPage === 'all' ? totalItems : currentPage * Number(itemsPerPage);
-    const indexOfFirstItem = itemsPerPage === 'all' ? 0 : indexOfLastItem - Number(itemsPerPage);
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
     const currentItems = sortedData.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(totalItems / Number(itemsPerPage));
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
 
     // Function to change page
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
@@ -490,65 +490,72 @@ export function KeywordAnalysisDashboardComponent() {
               </tbody>
             </table>
           </div>
-          {itemsPerPage !== 'all' && (
-            <div className="mt-4 flex flex-col items-center justify-center">
-              <div className="mb-2">
-                <p className="text-sm text-gray-700">
-                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, totalItems)}</span> of{' '}
-                  <span className="font-medium">{totalItems}</span> results
-                </p>
-              </div>
-              <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                  <Button
-                    onClick={() => paginate(1)}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">First</span>
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    onClick={() => paginate(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Previous</span>
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  {[...Array(totalPages)].map((_, i) => (
+          <div className="mt-4 flex flex-col items-center justify-center">
+            <div className="mb-2">
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, totalItems)}</span> of{' '}
+                <span className="font-medium">{totalItems}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <Button
+                  onClick={() => paginate(1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">First</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                {getPageNumbers(currentPage, totalPages).map((pageNum, index) => (
+                  pageNum === '...' ? (
+                    <span
+                      key={`dots-${index}`}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                    >
+                      ...
+                    </span>
+                  ) : (
                     <Button
-                      key={i}
-                      onClick={() => paginate(i + 1)}
+                      key={pageNum}
+                      onClick={() => paginate(Number(pageNum))}
                       className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
-                        i + 1 === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                        pageNum === currentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      {i + 1}
+                      {pageNum}
                     </Button>
-                  ))}
-                  <Button
-                    onClick={() => paginate(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Next</span>
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    onClick={() => paginate(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Last</span>
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                </nav>
-              </div>
+                  )
+                ))}
+                <Button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Last</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </nav>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -618,13 +625,19 @@ export function KeywordAnalysisDashboardComponent() {
 
     // Calculate pagination
     const totalItems = sortedFilteredKeywords.length;
-    const indexOfLastItem = allValidItemsPerPage === 'all' ? totalItems : allValidCurrentPage * Number(allValidItemsPerPage);
-    const indexOfFirstItem = allValidItemsPerPage === 'all' ? 0 : indexOfLastItem - Number(allValidItemsPerPage);
+    const indexOfFirstItem = allValidItemsPerPage === 'all' 
+      ? 0 
+      : (allValidCurrentPage - 1) * Number(allValidItemsPerPage);
+    const indexOfLastItem = allValidItemsPerPage === 'all'
+      ? totalItems
+      : Math.min(indexOfFirstItem + Number(allValidItemsPerPage), totalItems);
     const currentItems = sortedFilteredKeywords.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = allValidItemsPerPage === 'all' ? 1 : Math.ceil(totalItems / Number(allValidItemsPerPage));
+    const totalPages = allValidItemsPerPage === 'all' 
+      ? 1 
+      : Math.ceil(totalItems / Number(allValidItemsPerPage));
 
     // Function to change page
-    const paginate = (pageNumber: number) => setAllValidCurrentPage(pageNumber)
+    const paginate = (pageNumber: number) => setAllValidCurrentPage(pageNumber);
 
     // Function to handle sorting
     const handleSort = (column: keyof KeywordData) => {
@@ -723,69 +736,107 @@ export function KeywordAnalysisDashboardComponent() {
               </tbody>
             </table>
           </div>
-          {allValidItemsPerPage !== 'all' && (
-            <div className="mt-4 flex flex-col items-center justify-center">
-              <div className="mb-2">
-                <p className="text-sm text-gray-700">
-                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to <span className="font-medium">{Math.min(indexOfLastItem, totalItems)}</span> of{' '}
-                  <span className="font-medium">{totalItems}</span> results
-                </p>
-              </div>
-              <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                  <Button
-                    onClick={() => paginate(1)}
-                    disabled={allValidCurrentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">First</span>
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    onClick={() => paginate(allValidCurrentPage - 1)}
-                    disabled={allValidCurrentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Previous</span>
-                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  {[...Array(totalPages)].map((_, i) => (
+          <div className="mt-4 flex flex-col items-center justify-center">
+            <div className="mb-2">
+              <p className="text-sm text-gray-700">
+                {allValidItemsPerPage === 'all' ? (
+                  `Showing all ${totalItems} results`
+                ) : (
+                  `Showing ${totalItems === 0 ? 0 : indexOfFirstItem + 1} to ${Math.min(indexOfLastItem, totalItems)} of ${totalItems} results`
+                )}
+              </p>
+            </div>
+            {allValidItemsPerPage !== 'all' && (
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <Button
+                  onClick={() => paginate(1)}
+                  disabled={allValidCurrentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">First</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(allValidCurrentPage - 1)}
+                  disabled={allValidCurrentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                {getPageNumbers(allValidCurrentPage, totalPages).map((pageNum, index) => (
+                  pageNum === '...' ? (
+                    <span
+                      key={`dots-${index}`}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                    >
+                      ...
+                    </span>
+                  ) : (
                     <Button
-                      key={i}
-                      onClick={() => paginate(i + 1)}
+                      key={pageNum}
+                      onClick={() => paginate(Number(pageNum))}
                       className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
-                        i + 1 === allValidCurrentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                        pageNum === allValidCurrentPage ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      {i + 1}
+                      {pageNum}
                     </Button>
-                  ))}
-                  <Button
-                    onClick={() => paginate(allValidCurrentPage + 1)}
-                    disabled={allValidCurrentPage === totalPages}
-                    className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Next</span>
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    onClick={() => paginate(totalPages)}
-                    disabled={allValidCurrentPage === totalPages}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <span className="sr-only">Last</span>
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
-                  </Button>
-                </nav>
-              </div>
-            </div>
-          )}
+                  )
+                ))}
+                <Button
+                  onClick={() => paginate(allValidCurrentPage + 1)}
+                  disabled={allValidCurrentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+                <Button
+                  onClick={() => paginate(totalPages)}
+                  disabled={allValidCurrentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                >
+                  <span className="sr-only">Last</span>
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </nav>
+            )}
+          </div>
         </CardContent>
       </Card>
     )
   }
+
+  // First, add this pagination helper function at the component level
+  const getPageNumbers = (currentPage: number, totalPages: number) => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+        range.push(i);
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+
+    return rangeWithDots;
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto bg-gray-100 min-h-screen">
